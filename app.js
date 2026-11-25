@@ -129,8 +129,11 @@ function fit() {
   stage.classList.toggle('port', port);
   let k, ox, oy;
   if (!port) {
-    k = Math.max(W / 844, H / 390);
-    ox = (W - 844 * k) / 2; oy = Math.min(0, (H - 390 * k) * 0.35);
+    // always fit the full width so nothing on the left or right is cut off;
+    // on squarer screens (laptops, tablets) the sky and forecourt simply extend above and below
+    k = W / 844; ox = 0;
+    const spare = H - 390 * k;
+    oy = spare >= 0 ? spare * 0.45 : spare * 0.35;
     UI.style.width = '844px'; UI.style.height = '390px';
     UI.style.transform = `translate(${ox}px,${oy}px) scale(${k})`;
   } else {
