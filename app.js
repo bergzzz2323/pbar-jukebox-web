@@ -46,7 +46,7 @@ async function getJSON(url) { const r = await httpGet(url); try { return r.statu
 /* ================= scene ================= */
 const S = $('scene');
 (function buildScene() {
-  const LINE = '#9a9aa4', WALL = '#3a3a40', SKY = '#2a1230';
+  const LINE = '#7e7e88', WALL = '#26262b', SKY = '#2a1230';
   const PAIRS = [['#ff9a66', '#ffe08a'], ['#ff2d7a', '#ff79a8'], ['#9b5cff', '#5f9bff'], ['#20d4b8', '#7cf2c8'], ['#ff5a8a', '#ffb07a'], ['#c45cff', '#ff6cc4'], ['#4f8dff', '#a46cff'], ['#ffc46a', '#ff7a8a']];
   const BX = 176, BW = 584, NB = 13, BAY = BW / NB, BEAT = 60 / 123;
   const el = (css, inner = '', cls = '') => `<div${cls ? ` class="${cls}"` : ''} style="${css}">${inner}</div>`;
@@ -155,6 +155,7 @@ const S = $('scene');
     '';
   u += '<div id="card" role="status" aria-live="polite"></div>';
   u += '<button id="roomtog" role="switch" aria-checked="false" aria-label="Switch between Panorama Bar and Berghain"><span class="l">P BAR</span><span class="r">BERGHAIN</span><i class="thumb"></i></button>';
+  u += '<button id="favtog" aria-pressed="false" aria-label="Favourites mode: play only your starred tracks"><b>★</b><span class="n"></span></button>';
   u += '<button id="restart" aria-label="Restart from track 1, the newest post">RESTART</button>';
   u += '<button id="push" aria-label="Next track. Double tap to stop. Hold for track details"><span>PUSH</span></button>';
   u += '<button id="rewind" aria-label="Rewind: tap to restart the track, double tap for the previous track">REWIND</button>';
@@ -172,11 +173,27 @@ function fit() {
     k = W / 844; ox = 0;
     const spare = H - 390 * k;
     oy = spare >= 0 ? spare * 0.45 : spare * 0.35;
-    UI.style.width = '844px'; UI.style.height = '390px';
+    UI.style.width = '844px'; UI.style.height = '390px'; UI.style.removeProperty('--rowtop'); const tEl = document.getElementById('toast'); if (tEl) { tEl.classList.remove('tport'); tEl.style.top = ''; }
     UI.style.transform = `translate(${ox}px,${oy}px) scale(${k})`;
   } else {
-    k = W / 600; ox = -168 * k; oy = H * 0.34 - 54 * k;
+    // show the whole facade, sides and corners included
+    k = W / 614; ox = -161 * k; oy = H * 0.34 - 54 * k;
     const k2 = W / 390;
+    // switch + star row sits just below the forecourt/queue
+    let rt = Math.round((oy + 392 * k) / k2 + 12);
+    // shorter screens: lift the scene so the switch never meets the PUSH row
+    const Hu = H / k2, lim = Hu - 316;
+    if (rt > lim) { oy -= (rt - lim) * k2; rt = Math.round(lim); }
+    // ...but never under the small player: on very short screens shrink the scene to fit between them
+    const roofUI = (oy + 54 * k) / k2, ROOF_MIN = 212;
+    if (roofUI < ROOF_MIN) {
+      k = Math.max(0.3, (lim - 12 - ROOF_MIN) * k2 / 338);
+      ox = W / 2 - 468 * k; oy = ROOF_MIN * k2 - 54 * k;
+      rt = Math.round((oy + 392 * k) / k2 + 12);
+    }
+    UI.style.setProperty('--rowtop', rt + 'px');
+    // messages pop up between the switch and PUSH, clear of the track card and player
+    const tEl = document.getElementById('toast'); if (tEl) { tEl.classList.add('tport'); tEl.style.top = Math.round((rt + 40) * k2) + 'px'; }
     UI.style.width = '390px'; UI.style.height = (H / k2) + 'px';
     UI.style.transform = `scale(${k2})`;
   }
@@ -357,13 +374,17 @@ window.__spotify = (status, msg) => {
   else if (status === 'login') { $('sp-err').textContent = 'Opening the Spotify login… tap Agree.'; }
   else if (status === 'approved') { $('sp-err').textContent = 'Approved. Connecting to the Spotify app…'; }
   else if (status === 'retrying') { $('sp-err').textContent = `Spotify is slow to answer, trying again (${+msg + 1} of 3)…`; }
-  else if (status === 'playerror') toast('Spotify could not play that one');
+  else if (status === 'playerror') { toast('Spotify could not play that one'); trackEnded('error'); }
   else if (status === 'notconnected') { spConnected = false; renderSpStatus(); }
 };
 let spBase = 0, spAt = 0;
 window.__spState = json => {
   try {
+    const prev = spState;
     spState = JSON.parse(json);
+    if (cur && cur.how === 'spotify' && spState.uri === cur.spPlaying) cur.spSeen = true;   // only judge once Spotify has really started our track
+    if (cur && cur.how === 'spotify' && cur.spSeen && spState.uri && spState.uri !== cur.spPlaying && !stopped) trackEnded('end');
+    else if (cur && cur.how === 'spotify' && cur.spSeen && spState.uri === cur.spPlaying && spState.paused && prev && !prev.paused && spState.duration && spState.position >= spState.duration - 2500) trackEnded('end');
     if (cur && cur.how === 'spotify' && !scrubbing) {
       spBase = (spState.position || 0) / 1000; spAt = Date.now();
       ytTime = spBase; if (spState.duration) ytDur = spState.duration / 1000;
@@ -421,8 +442,8 @@ function showFrame(src) {
   screen.innerHTML = `<iframe src="${esc(src)}" allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin" title="Player"></iframe>`;
   screen.classList.add('on');
   ytTime = 0; ytDur = 0; ytState = -1;
-  const isYt = /youtube\.com\/embed/.test(src);
-  $('ytbar').classList.toggle('on', isYt);
+  const isYt = /youtube\.com\/embed/.test(src), isSc = /w\.soundcloud\.com\/player/.test(src);
+  $('ytbar').classList.toggle('on', isYt || isSc);
   if (isYt) {
     const f = screen.querySelector('iframe');
     f.addEventListener('load', () => {
@@ -437,12 +458,27 @@ function showFrame(src) {
   }
 }
 window.addEventListener('message', e => {
+  if (/^https:\/\/w\.soundcloud\.com$/.test(e.origin || '')) {
+    let m; try { m = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch (err) { return; }
+    if (!m || !cur || cur.how !== 'soundcloud') return;
+    const f = screen.querySelector('iframe');
+    const send = o => { try { f && f.contentWindow.postMessage(JSON.stringify(o), '*'); } catch (err) {} };
+    if (m.method === 'ready') { send({ method: 'play' }); send({ method: 'getDuration' }); }
+    else if (m.method === 'getDuration' && typeof m.value === 'number') ytDur = m.value / 1000;
+    else if (m.method === 'playProgress' && m.value) { if (!scrubbing) ytTime = (m.value.currentPosition || 0) / 1000; if (!ytDur) send({ method: 'getDuration' }); ytState = 1; }
+    else if (m.method === 'play') ytState = 1;
+    else if (m.method === 'pause') ytState = 2;
+    else if (m.method === 'finish') { ytState = 0; trackEnded('end'); }
+    return;
+  }
   if (!/^https:\/\/(www\.)?youtube(-nocookie)?\.com$/.test(e.origin || '')) return;
   let d; try { d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch (err) { return; }
+  if (d && d.event === 'onError' && cur && cur.how === 'youtube') { trackEnded('error'); return; }
+  if (d && d.event === 'onStateChange' && d.info === 0 && cur && cur.how === 'youtube') { trackEnded('end'); return; }
   if (d && d.info) {
     if (typeof d.info.currentTime === 'number' && !scrubbing) ytTime = d.info.currentTime;
     if (typeof d.info.duration === 'number' && d.info.duration > 0) ytDur = d.info.duration;
-    if (typeof d.info.playerState === 'number') ytState = d.info.playerState;
+    if (typeof d.info.playerState === 'number') { const was = ytState; ytState = d.info.playerState; if (ytState === 0 && was !== 0 && cur && cur.how === 'youtube') trackEnded('end'); }
   }
 });
 function ytSeek(delta) {
@@ -450,6 +486,9 @@ function ytSeek(delta) {
   if (cur && cur.how === 'spotify') {
     if (N) N.spotifySeek(Math.round(t * 1000));
     spBase = t; spAt = Date.now();
+  } else if (cur && cur.how === 'soundcloud') {
+    const f = screen.querySelector('iframe'); if (!f) return;
+    f.contentWindow.postMessage(JSON.stringify({ method: 'seekTo', value: Math.round(t * 1000) }), '*');
   } else {
     const f = screen.querySelector('iframe'); if (!f) return;
     f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [t, true] }), '*');
@@ -494,14 +533,20 @@ async function playItem(it) {
   if (spConnected) {
     let uri = it.spotifyUri;
     if (!uri) { const o = await odesli(it.url); if (o) { uri = o.spotifyUri; mergeMeta(it, o); } }
-    if (uri) { N.spotifyPlay(uri); how = 'spotify'; it.how = 'spotify'; showSpotifyScreen(); }
+    if (uri) { N.spotifyPlay(uri); how = 'spotify'; it.how = 'spotify'; it.spPlaying = uri.startsWith('spotify:track:') ? uri : null; it.spSeen = false; showSpotifyScreen(); }
   }
   if (!how) {
     let yt = it.ytId;
     if (!yt && it.kind !== 'soundcloud' && it.kind !== 'mixcloud') { const o = await odesli(it.url); if (o) { yt = o.ytId; mergeMeta(it, o); } }
     if (yt) { showFrame(`https://www.youtube.com/embed/${yt}?enablejsapi=1&autoplay=1&playsinline=1&controls=1&cc_load_policy=0&iv_load_policy=3&fs=0&rel=0&modestbranding=1&origin=${encodeURIComponent(location.origin)}`); how = 'youtube'; }
   }
-  if (!how && (it.kind === 'soundcloud')) { showFrame('https://w.soundcloud.com/player/?auto_play=true&visual=true&url=' + encodeURIComponent(it.url)); how = 'soundcloud'; }
+  if (!how && (it.kind === 'soundcloud')) {
+    showFrame('https://w.soundcloud.com/player/?auto_play=true&visual=true&url=' + encodeURIComponent(it.url)); how = 'soundcloud';
+    const f = screen.querySelector('iframe');
+    f.addEventListener('load', () => {
+      ['ready', 'play', 'pause', 'finish', 'playProgress'].forEach(ev => { try { f.contentWindow.postMessage(JSON.stringify({ method: 'addEventListener', value: ev }), '*'); } catch (e) {} });
+    });
+  }
   if (!how && it.kind === 'mixcloud') { const path = it.url.replace(/^https?:\/\/(www\.)?mixcloud\.com/i, ''); showFrame('https://www.mixcloud.com/widget/iframe/?autoplay=1&feed=' + encodeURIComponent(path)); how = 'mixcloud'; }
   it.how = how;
   return !!how;
@@ -563,17 +608,57 @@ async function tgClient() {
   const { TelegramClient, sessions } = TG;
   const apiId = parseInt(store.get('apiId'), 10), apiHash = store.get('apiHash');
   if (!apiId || !apiHash) throw new Error('Enter your API ID and API hash');
-  const c = new TelegramClient(new sessions.StringSession(store.get('session')), apiId, apiHash, { connectionRetries: 5, useWSS: true });
+  const c = new TelegramClient(new sessions.StringSession(store.get('session')), apiId, apiHash, { connectionRetries: 5, useWSS: true, floodSleepThreshold: 15 });
   try { c.setLogLevel('error'); } catch (e) {}
   await c.connect();
   return c;
 }
+const peerCache = {};
+// a group is remembered by its id + access hash, so finding it again never needs the whole chat list
+function peerRef(ent) {
+  if (!ent) return null;
+  const cn = ent.className || '';
+  if (cn === 'Channel') return { t: 'channel', id: String(ent.id), h: String(ent.accessHash) };
+  if (cn === 'Chat') return { t: 'chat', id: String(ent.id) };
+  return null;
+}
+function inputFromRef(r) {
+  if (!r || !TG) return null;
+  const big = TG.helpers && TG.helpers.returnBigInt ? TG.helpers.returnBigInt : (x => BigInt(x));
+  if (r.t === 'channel') return new TG.Api.InputPeerChannel({ channelId: big(r.id), accessHash: big(r.h) });
+  if (r.t === 'chat') return new TG.Api.InputPeerChat({ chatId: big(r.id) });
+  return null;
+}
+function savePeer(target, ent) {
+  const ref = peerRef(ent); const pre = target === 'bh' ? 'bh.' : '';
+  if (ref) store.set(pre + 'peerRef', JSON.stringify(ref));
+}
+// Telegram's "slow down" answer, in plain words
+function tgWhy(e) {
+  const m = (e && (e.errorMessage || e.message)) || '';
+  const sec = (e && e.seconds) || (/(\d+) seconds?/.exec(m) || [])[1];
+  if (/FLOOD|wait of/i.test(m) && sec) return `Telegram asked the app to pause for ${Math.ceil(sec / 60)} min. Leave it and try again after that.`;
+  if (/AUTH_KEY|SESSION_REVOKED|UNREGISTERED/i.test(m)) return 'Telegram logged this app out. Tap Connect Telegram to log in again.';
+  return m || 'no answer from Telegram';
+}
+const withTimeout = (p, ms, what) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(what + ' took too long. Check your connection and try again.')), ms))]);
+async function findDialog(gid) {
+  let dialogs = await client.getDialogs({ limit: 100 });
+  let d = dialogs.find(x => String(x.id) === gid);
+  if (!d) { try { dialogs = await client.getDialogs({ limit: 100, folder: 1 }); d = dialogs.find(x => String(x.id) === gid); } catch (e) {} }   // archived chats
+  return d ? d.entity : null;
+}
 async function resolvePeer() {
   const gid = store.get(K('groupId'));
   if (!gid) return null;
-  const dialogs = await client.getDialogs({ limit: 300 });
-  const d = dialogs.find(x => String(x.id) === gid);
-  return d ? d.entity : null;
+  const key = room + ':' + gid;
+  if (peerCache[key]) return peerCache[key];
+  let ref = null; try { ref = JSON.parse(store.get(K('peerRef')) || 'null'); } catch (e) {}
+  if (ref && ref.id === gid) { peerCache[key] = inputFromRef(ref); return peerCache[key]; }
+  // older installs: look it up once, then remember it
+  const ent = await findDialog(gid);
+  if (ent) { savePeer(room, ent); peerCache[key] = ent; }
+  return ent;
 }
 async function loadInitial() {
   setLed('SYNC');
@@ -633,7 +718,7 @@ async function startLive() {
     return true;
   } catch (e) {
     console.log('startLive', e && e.message);
-    toast('Telegram: ' + (e && e.message || 'could not connect'));
+    toast('Telegram: ' + tgWhy(e), 5000);
     return false;
   }
 }
@@ -649,16 +734,23 @@ async function switchRoom(r) {
   if (r === room) return;
   stopAll(); cur = null; resetFeed(); live = false; peer = null; history = []; back = 0;
   room = r; store.set('room', r); paintRoom();
-  toast(ROOM_NAME[r]);
+setTimeout(paintFav, 0);
   if (!client) return;
+  toast('Loading…', 30000);
+  const doneLoading = () => { const t = $('toast'); if (t.textContent === 'Loading…') { clearTimeout(toastT); t.classList.remove('on'); } };
   try {
     peer = await resolvePeer();
-    if (peer) await loadInitial();
+    if (peer) { await loadInitial(); doneLoading(); }
     else toast(`Choose the ${ROOM_NAME[r]} group in settings · demo tracks for now`, 3500);
-  } catch (e) { toast('Telegram: ' + (e && e.message || 'could not switch')); }
+  } catch (e) { toast('Telegram: ' + tgWhy(e), 5000); }
 }
 roomTog.addEventListener('click', () => switchRoom(room === 'bh' ? 'pbar' : 'bh'));
+$('favtog').addEventListener('click', () => {
+  favMode = !favMode; store.set('favMode', favMode ? '1' : ''); favIdx = -1; paintFav();
+  toast(favMode ? (favs.length ? `★ Favourites mode · ${favs.length} tracks · push to play` : '★ Favourites mode · no favourites yet') : `Back to ${ROOM_NAME[room]}`);
+});
 paintRoom();
+setTimeout(paintFav, 0);
 
 /* ================= button ================= */
 const push = $('push'), card = $('card');
@@ -683,7 +775,9 @@ function fillCard() {
     dj = findDJ(cur) || 'Unknown';
     src = 'Playing via ' + ({ spotify: 'Spotify', youtube: 'YouTube', soundcloud: 'SoundCloud', mixcloud: 'Mixcloud' }[cur.how] || 'nothing') + ' · tap to close';
   } else { title = 'Push the button to start'; }
-  card.innerHTML = `<div class="k">ARTIST</div><div class="v big">${esc(artist)}</div><div class="k">TRACK</div><div class="v">${esc(title)}</div><div class="k">LABEL</div><div class="v">${esc(label)}</div><div class="k">DJ</div><div class="v dj">${esc(dj)}</div><div class="src">${esc(src)}</div>`;
+  const canStar = live && cur && cur.url;
+  const starBtn = canStar ? `<button class="star${isFav(cur) ? ' on' : ''}" id="card-star" aria-pressed="${isFav(cur)}" aria-label="${isFav(cur) ? 'Remove from favourites' : 'Add to favourites'}">★</button>` : '';
+  card.innerHTML = starBtn + `<div class="k">ARTIST</div><div class="v big">${esc(artist)}</div><div class="k">TRACK</div><div class="v">${esc(title)}</div><div class="k">LABEL</div><div class="v">${esc(label)}</div><div class="k">DJ</div><div class="v dj">${esc(dj)}</div><div class="src">${esc(src)}</div>`;
 }
 async function lookupLabel(it) {
   if (it.label !== undefined) return;
@@ -691,6 +785,25 @@ async function lookupLabel(it) {
   if (!artist || !title) { const o = await odesli(it.url); if (o) { mergeMeta(it, o); artist = it.meta.artist; title = it.meta.title; } }
   it.label = await findLabel(artist || '', title || '');
   if (cur === it && card.classList.contains('show')) fillCard();
+}
+// ---- favourites: star a track on its card, then the star switch plays only your favourites ----
+let favs = []; try { favs = JSON.parse(store.get('favs', '[]')) || []; } catch (e) { favs = []; }
+let favMode = store.get('favMode') === '1', favIdx = -1;
+const isFav = it => !!it && favs.some(f => f.url === it.url);
+function saveFavs() { store.set('favs', JSON.stringify(favs)); paintFav(); }
+const FAV_MAX = 50;
+function toggleFav(it) {
+  if (!it || !it.url) return;
+  if (isFav(it)) { favs = favs.filter(f => f.url !== it.url); toast('Removed from favourites'); }
+  else if (favs.length >= FAV_MAX) { toast(`Favourites full (${FAV_MAX}) · remove one first`); return; }
+  else { favs.unshift({ ...slim(it), room: it.room || room }); toast(`★ Added to favourites (${favs.length}/${FAV_MAX})`); }
+  saveFavs(); if (card.classList.contains('show')) fillCard();
+}
+function paintFav() {
+  const b = $('favtog'); if (!b) return;
+  b.classList.toggle('on', favMode);
+  b.setAttribute('aria-pressed', favMode ? 'true' : 'false');
+  b.querySelector('.n').textContent = favs.length ? String(favs.length) : '';
 }
 const HIST_MAX = 21;
 let history = [], back = 0;
@@ -729,22 +842,48 @@ async function previousTrack() {
     if (ok) { lookupLabel(it); if (card.classList.contains('show')) fillCard(); }
   } finally { busy = false; }
 }
+let autoT = null;
+function trackEnded(reason) {
+  // called when the current track finishes (or fails once it has started): carry straight on
+  if (stopped || busy || !cur) return;
+  clearTimeout(autoT);
+  autoT = setTimeout(() => { if (!stopped && !busy) next(); }, reason === 'error' ? 300 : 800);
+}
 async function next() {
   if (busy) return;
   busy = true;
   try {
+    if (favMode) {
+      if (!favs.length) { toast('No favourites yet · hold PUSH and tap the star on a track you love', 3500); setLed('PUSH'); return; }
+      let skipped = 0;
+      for (let tries = 0; tries < favs.length; tries++) {
+        favIdx = (favIdx + 1) % favs.length;
+        const it = { ...favs[favIdx] };
+        cur = it;
+        if (await playItem(it)) {
+          remember(it); setLed('FAV ' + (favIdx + 1)); lookupLabel(it);
+          if (card.classList.contains('show')) fillCard();
+          if (skipped) toast(`Skipped ${skipped} favourite${skipped > 1 ? 's' : ''} that could not be played`);
+          return;
+        }
+        skipped++;
+      }
+      toast('None of your favourites can be played right now'); setLed('PUSH');
+      return;
+    }
     if (!live) {
       demoIdx = (demoIdx + 1) % DEMO.length; stopAll(); Demo.play(demoIdx); setLed('TRK ' + String(demoIdx + 1).padStart(2, '0'));
       if (card.classList.contains('show')) fillCard();
       return;
     }
-    for (let tries = 0; tries < 6; tries++) {
+    let skipped = 0, wrapped = false;
+    for (let tries = 0; tries < 60; tries++) {
       let it;
       let fromFresh = false;
       if (feed.fresh.length) { it = feed.fresh.shift(); fromFresh = true; }
       else {
         if (feed.idx + 5 >= feed.items.length) loadMore();
-        if (feed.idx + 1 >= feed.items.length) { await loadMore(); if (feed.idx + 1 >= feed.items.length) { toast('You have heard them all. Starting again from the newest!'); feed.idx = -1; } }
+        if (feed.idx + 1 >= feed.items.length) { await loadMore(); if (feed.idx + 1 >= feed.items.length) { if (wrapped) break; wrapped = true; toast('You have heard them all. Starting again from the newest!'); feed.idx = -1; } }
         it = feed.items[++feed.idx];
         if (it) { store.set(K('lastId'), String(it.id)); store.set(K('lastUrl'), it.url); }
       }
@@ -756,10 +895,13 @@ async function next() {
         setLed(fromFresh ? 'NEW' : String(feed.idx + 1).padStart(2, '0'));
         lookupLabel(it);
         if (card.classList.contains('show')) fillCard();
+        if (skipped) toast(skipped === 1 ? 'Skipped 1 track that could not be played' : `Skipped ${skipped} tracks that could not be played`);
         return;
       }
-      toast('Skipped a link that could not be played');
+      skipped++;
+      setLed('SKIP');
     }
+    toast('Could not find a playable track right now');
     setLed('PUSH');
   } finally { busy = false; }
 }
@@ -771,6 +913,7 @@ push.addEventListener('pointerdown', e => {
 // RESTART: back to the very beginning of the current room (the newest post, track 1)
 $('restart').addEventListener('click', () => {
   if (busy) return;
+  if (favMode) { favIdx = -1; next(); toast('Back to your first favourite'); return; }
   if (!live) { demoIdx = -1; next(); toast('Back to track 1'); return; }
   feed.idx = -1; feed.fresh = []; back = 0;
   next(); toast(`Back to track 1 · newest ${ROOM_NAME[room]} post`);
@@ -795,7 +938,10 @@ push.addEventListener('pointerup', () => {
 push.addEventListener('pointercancel', () => { push.classList.remove('down'); clearTimeout(holdT); });
 push.addEventListener('contextmenu', e => e.preventDefault());
 push.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); next(); } });
-card.addEventListener('click', () => card.classList.remove('show'));
+card.addEventListener('click', e => {
+  if (e.target.closest('#card-star')) { e.stopPropagation(); clearTimeout(hideT); toggleFav(cur); hideT = setTimeout(() => card.classList.remove('show'), 5000); return; }
+  card.classList.remove('show');
+});
 
 // windows pulse at 123 bpm only while music is actually playing
 function isPlaying() {
@@ -804,6 +950,7 @@ function isPlaying() {
   if (!cur || !cur.how) return false;
   if (cur.how === 'spotify') return !!(spState && !spState.paused);
   if (cur.how === 'youtube') return ytState === 1;
+  if (cur.how === 'soundcloud') return ytState !== 2 && ytState !== 0;
   return true;
 }
 // background play: keep the app alive for sound it makes itself; YouTube pauses while the app is hidden
@@ -827,7 +974,7 @@ setInterval(() => {
 setInterval(() => {
   stage.classList.toggle('still', !isPlaying());
   if (cur && cur.how === 'spotify' && !scrubbing && spState && !spState.paused && spAt) ytTime = Math.min(ytDur || 1e9, spBase + (Date.now() - spAt) / 1000);
-  if (cur && (cur.how === 'youtube' || cur.how === 'spotify')) scrubUI();
+  if (cur && (cur.how === 'youtube' || cur.how === 'spotify' || cur.how === 'soundcloud')) scrubUI();
 }, 200);
 
 /* ================= settings panel ================= */
@@ -895,30 +1042,63 @@ async function showGroups(target) {
   if (target === 'pbar' || target === 'bh') pickFor = target;
   $('gtitle').textContent = `Pick the ${ROOM_NAME[pickFor]} group:`;
   show('tg-groups', true);
+  if (groupList.length) { renderGroups(); return; }   // already loaded this session: no need to ask Telegram again
   $('glist').innerHTML = '<p style="padding:10px">Loading your chats…</p>';
   try {
-    if (!client) client = await tgClient();
-    const dialogs = await client.getDialogs({ limit: 300 });
-    groupList = dialogs.filter(d => d.isGroup || d.isChannel).map(d => ({ id: String(d.id), name: d.title || d.name || 'Untitled', entity: d.entity }));
+    if (!client) client = await withTimeout(tgClient(), 25000, 'Connecting to Telegram');
+    const dialogs = await withTimeout(client.getDialogs({ limit: 150 }), 30000, 'Loading your chats');
+    const toG = d => ({ id: String(d.id), name: d.title || d.name || 'Untitled', entity: d.entity });
+    groupList = dialogs.filter(d => d.isGroup || d.isChannel).map(toG);
     renderGroups();
-  } catch (e) { $('glist').innerHTML = ''; tgErr('Could not load chats: ' + (e && e.message)); }
+    try {
+      const archived = await withTimeout(client.getDialogs({ limit: 100, folder: 1 }), 20000, 'Archived chats');
+      const seen = new Set(groupList.map(g => g.id));
+      archived.filter(d => (d.isGroup || d.isChannel) && !seen.has(String(d.id))).forEach(d => groupList.push(toG(d)));
+      renderGroups();
+    } catch (err) {}
+  } catch (e) { $('glist').innerHTML = `<p style="padding:10px">${esc(tgWhy(e))}</p>`; }
 }
+async function pickGroup(g) {
+  const pre = pickFor === 'bh' ? 'bh.' : '';
+  store.set(pre + 'groupId', g.id); store.set(pre + 'groupName', g.name);
+  savePeer(pickFor, g.entity);
+  peerCache[pickFor + ':' + g.id] = g.entity;
+  show('tg-groups', false); renderTgStatus();
+  if (pickFor !== room) { toast(`${ROOM_NAME[pickFor]} group saved · flick the switch to hear it`); return; }
+  peer = g.entity; panel.classList.remove('on');
+  stopAll(); cur = null; resetFeed();
+  try { await loadInitial(); } catch (err) { toast('Could not read that chat: ' + tgWhy(err)); }
+}
+// paste a t.me link or @name instead of scrolling the list
+$('glink-go').addEventListener('click', async () => {
+  const raw = $('glink').value.trim(); if (!raw) return;
+  $('glink-msg').textContent = 'Looking it up…';
+  try {
+    if (!client) client = await withTimeout(tgClient(), 25000, 'Connecting to Telegram');
+    let ent = null;
+    const inv = /(?:t\.me\/(?:\+|joinchat\/))([\w-]+)/i.exec(raw);
+    if (inv) {
+      const r = await client.invoke(new TG.Api.messages.CheckChatInvite({ hash: inv[1] }));
+      ent = r.chat || null;
+      if (!ent) throw new Error('You need to join this group in Telegram first, then try again.');
+    } else {
+      const name = raw.replace(/^https?:\/\//i, '').replace(/^t\.me\//i, '').replace(/^@/, '').split(/[/?]/)[0];
+      ent = await withTimeout(client.getEntity(name), 20000, 'Finding the group');
+    }
+    if (!ent || !/^(Channel|Chat)$/.test(ent.className)) throw new Error('That link is not a group or channel.');
+    $('glink-msg').textContent = '';
+    await pickGroup({ id: String(ent.id), name: ent.title || 'Group', entity: ent });
+  } catch (e) { $('glink-msg').textContent = tgWhy(e); }
+});
 function renderGroups() {
   const f = $('gfilter').value.trim().toLowerCase();
   const list = groupList.filter(g => !f || g.name.toLowerCase().includes(f)).slice(0, 80);
   $('glist').innerHTML = list.map(g => `<button data-id="${esc(g.id)}">${esc(g.name)}</button>`).join('') || '<p style="padding:10px">No matching chats</p>';
 }
 $('gfilter').addEventListener('input', renderGroups);
-$('glist').addEventListener('click', async e => {
+$('glist').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  const g = groupList.find(x => x.id === b.dataset.id); if (!g) return;
-  const pre = pickFor === 'bh' ? 'bh.' : '';
-  store.set(pre + 'groupId', g.id); store.set(pre + 'groupName', g.name);
-  show('tg-groups', false); renderTgStatus();
-  if (pickFor !== room) { toast(`${ROOM_NAME[pickFor]} group saved · flick the switch to hear it`); return; }
-  peer = g.entity; panel.classList.remove('on');
-  stopAll(); cur = null; resetFeed();
-  try { await loadInitial(); } catch (err) { toast('Could not read that chat: ' + (err && err.message)); }
+  const g = groupList.find(x => x.id === b.dataset.id); if (g) pickGroup(g);
 });
 $('tg-pick-pbar').addEventListener('click', () => showGroups('pbar'));
 $('tg-pick-bh').addEventListener('click', () => showGroups('bh'));

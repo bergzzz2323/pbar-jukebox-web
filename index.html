@@ -105,7 +105,7 @@ html,body{margin:0;height:100%;background:#2a1230;overflow:hidden;color:#f4e6ee;
 .groups button{display:block;width:100%;text-align:left;font:15px 'Space Grotesk',sans-serif;background:#160612;color:#f4e6ee;border:0;border-bottom:1px solid #2c2c30;padding:12px 10px;min-height:44px}
 .groups button:active{background:#3a1c34}
 .hide{display:none!important}
-@media (orientation:portrait){#toast{bottom:auto;top:56%}}
+
 @media (prefers-reduced-motion:reduce){.win,.moon,.qp{animation-play-state:paused}}
 
 /* ---- minimal controls: thin cream line work, glowing core, mono labels ---- */
@@ -216,7 +216,7 @@ html,body{margin:0;height:100%;background:#2a1230;overflow:hidden;color:#f4e6ee;
 #roomtog.bh .thumb{left:50%}
 .port #roomtog{left:105px;top:auto;bottom:246px;width:180px;height:34px;font-size:10px}
 /* ---- Berghain: same windows, black and white strobe ---- */
-#stage.bh .win{background:linear-gradient(90deg,transparent 0 31%,#3a3a40 31% 36%,transparent 36% 64%,#3a3a40 64% 69%,transparent 69%),linear-gradient(transparent 0 12%,#3a3a40 12% 16%,transparent 16% 52%,#3a3a40 52% 56%,transparent 56% 86%,#3a3a40 86% 90%,transparent 90%),linear-gradient(#ffffff,#f2f4ff)!important;background-size:100% 100%!important;filter:none;box-shadow:0 0 22px 5px rgba(255,255,255,.55),0 0 4px rgba(255,255,255,.9) inset}
+#stage.bh .win{background:linear-gradient(90deg,transparent 0 31%,#26262b 31% 36%,transparent 36% 64%,#26262b 64% 69%,transparent 69%),linear-gradient(transparent 0 12%,#26262b 12% 16%,transparent 16% 52%,#26262b 52% 56%,transparent 56% 86%,#26262b 86% 90%,transparent 90%),linear-gradient(#ffffff,#f2f4ff)!important;background-size:100% 100%!important;filter:none;box-shadow:0 0 22px 5px rgba(255,255,255,.55),0 0 4px rgba(255,255,255,.9) inset}
 @keyframes strobe{0%{opacity:1}12%{opacity:.12}50%{opacity:.45}62%{opacity:.08}}
 #stage.bh.still .win{animation:none!important;opacity:.12}
 #stage.bh:not(.still) #push{animation:pushbeat-bw .4615s ease-out infinite}
@@ -239,6 +239,32 @@ html,body{margin:0;height:100%;background:#2a1230;overflow:hidden;color:#f4e6ee;
 #restart::after{content:'';position:absolute;left:12%;right:12%;top:2px;height:32%;border-radius:999px;background:linear-gradient(rgba(255,255,255,.18),rgba(255,255,255,0));pointer-events:none}
 #restart:active{transform:translateY(2px);box-shadow:0 0 0 1px #7a7a82,inset 0 1px 3px rgba(0,0,0,.6),0 1px 0 #000,0 2px 4px rgba(0,0,0,.5)}
 .port #restart{left:auto;right:30px;top:auto;bottom:146px;width:90px;height:36px;font-size:10px;letter-spacing:.16em;text-indent:.16em}
+
+/* ---- favourites ---- */
+#favtog{position:absolute;left:515px;top:10px;width:44px;height:28px;padding:0;border-radius:999px;border:1px solid #000;z-index:6;
+  background:linear-gradient(#3c3c42 0,#1c1c20 55%,#0c0c0e 100%);box-shadow:0 0 0 1px #5e5e66,inset 0 1px 0 rgba(255,255,255,.22),0 3px 0 #000,0 5px 9px rgba(0,0,0,.5);
+  color:rgba(200,200,208,.32);font:700 14px/1 'Space Grotesk',sans-serif;display:flex;align-items:center;justify-content:center;gap:2px}
+#favtog .n{font:700 8px 'Space Mono',monospace}
+#favtog.on{color:#ffd27a;box-shadow:0 0 0 1px #ffd27a,inset 0 1px 0 rgba(255,255,255,.22),0 3px 0 #000,0 0 16px rgba(255,210,122,.55)}
+#favtog:active{transform:translateY(2px)}
+.port #favtog{left:auto;right:16px;top:auto;bottom:249px;width:52px;height:34px;font-size:16px}
+.port #roomtog{left:70px}
+#card .star{display:block;margin:0 0 10px;padding:0;width:44px;height:30px;border-radius:999px;border:1px solid #000;background:linear-gradient(#3c3c42 0,#1c1c20 55%,#0c0c0e 100%);box-shadow:0 0 0 1px #5e5e66,inset 0 1px 0 rgba(255,255,255,.22),0 3px 0 #000;color:rgba(220,220,226,.55);font:18px/1 sans-serif}
+#card .star.on{color:#ffd27a;box-shadow:0 0 0 1px #ffd27a,inset 0 1px 0 rgba(255,255,255,.22),0 3px 0 #000,0 0 14px rgba(255,210,122,.55)}
+
+/* controls kept clear of the building, queue and player; star sits with the play buttons */
+#roomtog{left:176px;top:350px;width:152px;height:26px;font-size:8px}
+#favtog{left:59px;top:344px;width:60px;height:26px}
+.port #roomtog{left:70px;top:var(--rowtop,560px);bottom:auto;width:250px;height:34px;font-size:10px}
+.port #favtog{left:165px;right:auto;top:auto;bottom:24px;width:60px;height:34px}
+.port #push{bottom:96px}
+.port #rewind,.port #restart{bottom:138px}
+#toast{top:auto;bottom:14px;left:auto;right:14px;transform:none;max-width:60vw}
+#toast.tport{bottom:auto;left:50%;right:auto;transform:translateX(-50%);max-width:86vw}
+.port #screen.big{left:15px;top:14px;width:300px;height:169px}
+.port #ytbar.big{left:15px;top:189px;width:300px}
+#card .star{position:absolute;right:16px;bottom:14px;margin:0;z-index:2}
+#card .src{padding-right:60px}
 
 /* ---- web version: password gate, no Spotify section ---- */
 #s-sp{display:none}
@@ -291,6 +317,9 @@ html,body{margin:0;height:100%;background:#2a1230;overflow:hidden;color:#f4e6ee;
     <p id="gtitle">Pick the group to play from:</p>
     <label for="gfilter">Search</label><input id="gfilter" autocomplete="off" placeholder="Panorama">
     <div class="groups" id="glist"></div>
+    <label for="glink">Or paste the group's link or @name (Telegram: group info → Share)</label>
+    <div class="row"><input id="glink" autocomplete="off" placeholder="https://t.me/..."><button class="btn" id="glink-go">Use link</button></div>
+    <p id="glink-msg" class="err"></p>
    </div>
 
    <div class="row" id="tg-actions">
