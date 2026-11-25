@@ -52,10 +52,11 @@ const S = $('scene');
   const el = (css, inner = '', cls = '') => `<div${cls ? ` class="${cls}"` : ''} style="${css}">${inner}</div>`;
   const MULL = `linear-gradient(90deg,transparent 0 31%,${WALL} 31% 36%,transparent 36% 64%,${WALL} 64% 69%,transparent 69%),linear-gradient(transparent 0 12%,${WALL} 12% 16%,transparent 16% 52%,${WALL} 52% 56%,transparent 56% 86%,${WALL} 86% 90%,transparent 90%)`;
   const lit = (x, y, w, h, i) => {
+    const row = i >= 50 ? 1 : 0, col = i % 50;
     const [a, b] = PAIRS[(R(i) * PAIRS.length) | 0];
-    return el(`left:${(x - 3).toFixed(1)}px;top:${y - 3}px;width:${(w + 6).toFixed(1)}px;height:${h + 6}px;border:1px solid ${LINE}`) +
+    return el(`left:${(x - 3).toFixed(1)}px;top:${y - 3}px;width:${(w + 6).toFixed(1)}px;height:${h + 6}px;border:1px solid ${LINE}`, '', 'wf') +
       el(`left:${x.toFixed(1)}px;top:${y}px;width:${w.toFixed(1)}px;height:${h}px;background:${MULL},linear-gradient(${a},${b},${a},${b});background-size:100% 100%,100% 100%,100% 300%;` +
-         `animation-delay:-${(((R(i + 600) * 16) | 0) * BEAT).toFixed(3)}s,0s,-${(((R(i + 900) * 4) | 0) * BEAT).toFixed(3)}s`, '', 'win');
+         `animation-delay:-${(((R(i + 600) * 16) | 0) * BEAT).toFixed(3)}s,0s,-${(((R(i + 900) * 4) | 0) * BEAT).toFixed(3)}s`, '', `win bw${row}x${col}`);
   };
   const rosette = (cx, cy, r) => [r, r * .62, r * .25].map(rr => el(`left:${(cx - rr).toFixed(1)}px;top:${(cy - rr).toFixed(1)}px;width:${(2 * rr).toFixed(1)}px;height:${(2 * rr).toFixed(1)}px;border:1px solid ${LINE};border-radius:50%`)).join('');
   let h = '';
@@ -111,6 +112,41 @@ const S = $('scene');
   for (let i = 0; i < 22; i++) h += el(`left:0;top:0;width:9px;height:26px;animation-delay:-${i * 6}s`, el('left:1px;top:0;width:7px;height:7px;border-radius:50%;background:#0a0208;border:1px solid #4a2a42') + el('left:0;top:8px;width:9px;height:18px;border-radius:3px 3px 0 0;background:#0a0208;border:1px solid #4a2a42;border-bottom:0'), 'qp');
   h += el('left:505px;top:300px;width:10px;height:30px', el('left:1px;top:0;width:8px;height:8px;border-radius:50%;background:#000') + el('left:0;top:8px;width:10px;height:22px;background:#000'));
   S.innerHTML = h;
+  {
+    const B = 60 / 130, LOOP = 32, COLS = 13, ROWS = 2;
+    // a 32-beat score of random flashes; each one lights its window fully, the next ones along at half, then a quarter
+    const level = Array.from({ length: ROWS }, () => Array.from({ length: COLS }, () => new Map()));
+    let seed = 2000;
+    const rnd = () => R(seed++);
+    for (let beat = 0; beat < LOOP; beat++) {
+      const n = 2 + ((rnd() * 3) | 0);                                 // 2 to 4 flashes on every beat
+      for (let f = 0; f < n; f++) {
+        const t = beat + (rnd() < .35 ? .5 : 0);                        // plenty of off-beat flashes too
+        const c0 = (rnd() * COLS) | 0, r0 = (rnd() * ROWS) | 0;
+        for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+          const d = Math.abs(c - c0) + Math.abs(r - r0);
+          if (d > 2) continue;
+          const v = [1, .5, .25][d];
+          const m = level[r][c]; m.set(t, Math.max(m.get(t) || 0, v));
+        }
+      }
+    }
+    const pct = b => (b / LOOP * 100).toFixed(3) + '%';
+    const DARK = .04;
+    let css = '';
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+      const hits = [...level[r][c].entries()].sort((x, y) => x[0] - y[0]);
+      let k = `0%{opacity:${DARK}}`;
+      hits.forEach(([t, v]) => {
+        if (t > 0) k += `${pct(t - 0.02)}{opacity:${DARK}}`;
+        k += `${pct(t)}{opacity:${(DARK + (1 - DARK) * v).toFixed(2)}}${pct(t + 0.12)}{opacity:${(DARK + (0.6 - DARK) * v).toFixed(2)}}${pct(t + 0.4)}{opacity:${DARK}}`;
+      });
+      k += `100%{opacity:${DARK}}`;
+      css += `@keyframes bh${r}x${c}{${k}}#stage.bh .win.bw${r}x${c}{animation:bh${r}x${c} ${(B * LOOP).toFixed(3)}s linear infinite;animation-delay:0s}`;
+    }
+    const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+  }
+
   let u = '<div id="post"><div id="led">PUSH</div></div>';
   u += '<div id="screen"></div>';
   u += '<div id="ytbar"><div id="scrub" role="slider" aria-label="Track position" tabindex="0"><b id="scrub-fill"></b><b id="scrub-knob"></b></div>' +
@@ -118,6 +154,8 @@ const S = $('scene');
     '<div id="ytbtns"><button id="yt-back" aria-label="Back 30 seconds">−30</button><button id="yt-big" aria-label="Bigger video">BIG</button><button id="yt-fwd" aria-label="Forward 30 seconds">+30</button></div></div>' +
     '';
   u += '<div id="card" role="status" aria-live="polite"></div>';
+  u += '<button id="roomtog" role="switch" aria-checked="false" aria-label="Switch between Panorama Bar and Berghain"><span class="l">P BAR</span><span class="r">BERGHAIN</span><i class="thumb"></i></button>';
+  u += '<button id="restart" aria-label="Restart from track 1, the newest post">RESTART</button>';
   u += '<button id="push" aria-label="Next track. Double tap to stop. Hold for track details"><span>PUSH</span></button>';
   u += '<button id="rewind" aria-label="Rewind: tap to restart the track, double tap for the previous track">REWIND</button>';
   $('ui').innerHTML = u;
@@ -474,6 +512,10 @@ function mergeMeta(it, o) { if (!it.meta) it.meta = {}; if (!it.meta.title && o.
 const TG = window.telegram || null;
 let client = null, peer = null;
 const feed = { items: [], seen: new Set(), idx: -1, fresh: [], oldestId: 0, newestId: 0, loadingMore: false, done: false };
+let room = store.get('room', 'pbar') === 'bh' ? 'bh' : 'pbar';
+const K = k => room === 'bh' ? 'bh.' + k : k;            // each room keeps its own group, place and history
+const ROOM_NAME = { pbar: 'Panorama Bar', bh: 'Berghain' };
+function resetFeed() { Object.assign(feed, { items: [], idx: -1, fresh: [], oldestId: 0, newestId: 0, loadingMore: false, done: false }); feed.seen = new Set(); }
 let live = false;
 
 const replies = new Map();
@@ -527,7 +569,7 @@ async function tgClient() {
   return c;
 }
 async function resolvePeer() {
-  const gid = store.get('groupId');
+  const gid = store.get(K('groupId'));
   if (!gid) return null;
   const dialogs = await client.getDialogs({ limit: 300 });
   const d = dialogs.find(x => String(x.id) === gid);
@@ -543,8 +585,8 @@ async function loadInitial() {
   feed.done = msgs.length < 200;
   live = true;
   restoreHistory();
-  const seen = +store.get('seenNewest', '0');
-  const lastId = +store.get('lastId', '0'), lastUrl = store.get('lastUrl');
+  const seen = +store.get(K('seenNewest'), '0');
+  const lastId = +store.get(K('lastId'), '0'), lastUrl = store.get(K('lastUrl'));
   let resumed = false;
   if (lastId) {
     let pos = feed.items.findIndex(x => x.id === lastId && x.url === lastUrl);
@@ -552,7 +594,7 @@ async function loadInitial() {
     if (pos >= 0) { feed.idx = pos; resumed = true; }
   }
   if (resumed && seen) feed.fresh = feed.items.filter(x => x.id > seen).sort((a, b) => b.id - a.id);
-  store.set('seenNewest', String(feed.newestId));
+  store.set(K('seenNewest'), String(feed.newestId));
   setLed(items.length ? 'PUSH' : 'NONE');
   if (!items.length) toast('No music links found yet');
   else if (resumed) toast(feed.fresh.length ? `Carrying on where you left off · ${feed.fresh.length} new posts first` : 'Carrying on where you left off');
@@ -586,7 +628,7 @@ async function startLive() {
     client = await tgClient();
     if (!(await client.checkAuthorization())) { client = null; return false; }
     peer = await resolvePeer();
-    if (!peer) { toast('Pick your group in settings'); return false; }
+    if (!peer) { toast(`Choose the ${ROOM_NAME[room]} group in settings`); return false; }
     await loadInitial();
     return true;
   } catch (e) {
@@ -595,6 +637,28 @@ async function startLive() {
     return false;
   }
 }
+
+/* ================= room switch ================= */
+const roomTog = $('roomtog');
+function paintRoom() {
+  stage.classList.toggle('bh', room === 'bh');
+  roomTog.classList.toggle('bh', room === 'bh');
+  roomTog.setAttribute('aria-checked', room === 'bh' ? 'true' : 'false');
+}
+async function switchRoom(r) {
+  if (r === room) return;
+  stopAll(); cur = null; resetFeed(); live = false; peer = null; history = []; back = 0;
+  room = r; store.set('room', r); paintRoom();
+  toast(ROOM_NAME[r]);
+  if (!client) return;
+  try {
+    peer = await resolvePeer();
+    if (peer) await loadInitial();
+    else toast(`Choose the ${ROOM_NAME[r]} group in settings · demo tracks for now`, 3500);
+  } catch (e) { toast('Telegram: ' + (e && e.message || 'could not switch')); }
+}
+roomTog.addEventListener('click', () => switchRoom(room === 'bh' ? 'pbar' : 'bh'));
+paintRoom();
 
 /* ================= button ================= */
 const push = $('push'), card = $('card');
@@ -631,8 +695,8 @@ async function lookupLabel(it) {
 const HIST_MAX = 21;
 let history = [], back = 0;
 const slim = it => ({ id: it.id, date: it.date, url: it.url, text: (it.text || '').slice(0, 600), meta: it.meta, kind: it.kind, spotifyUri: it.spotifyUri, ytId: it.ytId, label: it.label });
-function saveHistory() { store.set('history', JSON.stringify(history.map(slim))); }
-function restoreHistory() { try { history = JSON.parse(store.get('history', '[]')) || []; } catch (e) { history = []; } back = 0; }
+function saveHistory() { store.set(K('history'), JSON.stringify(history.map(slim))); }
+function restoreHistory() { try { history = JSON.parse(store.get(K('history'), '[]')) || []; } catch (e) { history = []; } back = 0; }
 function remember(it) {
   history.push(it); if (history.length > HIST_MAX) history.shift(); back = 0; saveHistory();
 }
@@ -682,7 +746,7 @@ async function next() {
         if (feed.idx + 5 >= feed.items.length) loadMore();
         if (feed.idx + 1 >= feed.items.length) { await loadMore(); if (feed.idx + 1 >= feed.items.length) { toast('You have heard them all. Starting again from the newest!'); feed.idx = -1; } }
         it = feed.items[++feed.idx];
-        if (it) { store.set('lastId', String(it.id)); store.set('lastUrl', it.url); }
+        if (it) { store.set(K('lastId'), String(it.id)); store.set(K('lastUrl'), it.url); }
       }
       if (!it) break;
       cur = it;
@@ -703,6 +767,13 @@ let holdT = null, held = false, hideT = null;
 push.addEventListener('pointerdown', e => {
   e.preventDefault(); push.classList.add('down'); held = false;
   holdT = setTimeout(() => { held = true; fillCard(); card.classList.add('show'); clearTimeout(hideT); if (cur) lookupLabel(cur); }, 450);
+});
+// RESTART: back to the very beginning of the current room (the newest post, track 1)
+$('restart').addEventListener('click', () => {
+  if (busy) return;
+  if (!live) { demoIdx = -1; next(); toast('Back to track 1'); return; }
+  feed.idx = -1; feed.fresh = []; back = 0;
+  next(); toast(`Back to track 1 · newest ${ROOM_NAME[room]} post`);
 });
 const rw = $('rewind');
 let rwT = null, rwLast = 0;
@@ -769,12 +840,12 @@ $('open-mytg').addEventListener('click', () => N ? N.openExternal('https://my.te
 $('open-spdev').addEventListener('click', () => N ? N.openExternal('https://developer.spotify.com/dashboard') : window.open('https://developer.spotify.com/dashboard'));
 
 function renderTgStatus() {
-  const name = store.get('groupName');
+  const pb = store.get('groupName'), bh = store.get('bh.groupName');
   const loggedIn = !!store.get('session');
   $('tg-status').innerHTML = loggedIn
-    ? `<p class="ok">Connected${name ? ' · playing from ' + esc(name) : ''}</p>`
+    ? `<p class="ok">Connected</p><p>Panorama Bar: ${pb ? esc(pb) : '<em>not chosen</em>'}<br>Berghain: ${bh ? esc(bh) : '<em>not chosen</em>'}</p>`
     : '<p>Not connected yet. Until you connect, the button plays built-in demo tracks.</p>';
-  show('tg-connect', !loggedIn); show('tg-change', loggedIn); show('tg-logout', loggedIn);
+  show('tg-connect', !loggedIn); show('tg-pick-pbar', loggedIn); show('tg-pick-bh', loggedIn); show('tg-logout', loggedIn);
 }
 function renderSpStatus() {
   $('sp-status').innerHTML = spConnected ? '<p class="ok">Connected. Spotify links play in full through your Spotify app.</p>'
@@ -819,8 +890,10 @@ $('send-code').addEventListener('click', async () => {
 $('submit-code').addEventListener('click', () => { const v = $('code').value.trim(); if (!v) return tgErr('Enter the code.'); tgErr(''); answer('code', v); });
 $('submit-pass').addEventListener('click', () => { const v = $('pass').value; if (!v) return tgErr('Enter your password.'); tgErr(''); answer('pass', v); });
 
-let groupList = [];
-async function showGroups() {
+let groupList = [], pickFor = 'pbar';
+async function showGroups(target) {
+  if (target === 'pbar' || target === 'bh') pickFor = target;
+  $('gtitle').textContent = `Pick the ${ROOM_NAME[pickFor]} group:`;
   show('tg-groups', true);
   $('glist').innerHTML = '<p style="padding:10px">Loading your chats…</p>';
   try {
@@ -839,15 +912,19 @@ $('gfilter').addEventListener('input', renderGroups);
 $('glist').addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b) return;
   const g = groupList.find(x => x.id === b.dataset.id); if (!g) return;
-  store.set('groupId', g.id); store.set('groupName', g.name);
-  peer = g.entity; show('tg-groups', false); renderTgStatus(); panel.classList.remove('on');
-  stopAll(); cur = null;
+  const pre = pickFor === 'bh' ? 'bh.' : '';
+  store.set(pre + 'groupId', g.id); store.set(pre + 'groupName', g.name);
+  show('tg-groups', false); renderTgStatus();
+  if (pickFor !== room) { toast(`${ROOM_NAME[pickFor]} group saved · flick the switch to hear it`); return; }
+  peer = g.entity; panel.classList.remove('on');
+  stopAll(); cur = null; resetFeed();
   try { await loadInitial(); } catch (err) { toast('Could not read that chat: ' + (err && err.message)); }
 });
-$('tg-change').addEventListener('click', showGroups);
+$('tg-pick-pbar').addEventListener('click', () => showGroups('pbar'));
+$('tg-pick-bh').addEventListener('click', () => showGroups('bh'));
 $('tg-logout').addEventListener('click', async () => {
   try { if (client) await client.invoke(new TG.Api.auth.LogOut()); } catch (e) {}
-  store.del('session'); store.del('groupId'); store.del('groupName');
+  store.del('session'); store.del('groupId'); store.del('groupName'); store.del('bh.groupId'); store.del('bh.groupName');
   client = null; peer = null; live = false; feed.items = []; feed.seen.clear(); cur = null; stopAll();
   renderTgStatus(); setLed('PUSH'); toast('Logged out. Demo tracks are back.');
 });
@@ -871,6 +948,6 @@ $('sp-connect').addEventListener('click', () => {
 /* ================= start ================= */
 if (!TG) console.log('telegram.js missing');
 if (store.get('spClientId') && N && N.spotifyInstalled()) N.spotifyConnect(store.get('spClientId'));
-if (store.get('session')) startLive().then(ok => { if (!ok && !store.get('groupId')) openPanel(); });
+if (store.get('session')) startLive().then(ok => { if (!ok && !store.get(K('groupId'))) openPanel(); });
 else setTimeout(() => toast('Demo mode · tap the gear to connect Telegram', 4000), 800);
 })();
