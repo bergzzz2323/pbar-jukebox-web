@@ -265,8 +265,7 @@ html,body{margin:0;height:100%;background:#2a1230;overflow:hidden;color:#f4e6ee;
 .port #ytbar.big{left:15px;top:189px;width:300px}
 #card .star{position:absolute;right:16px;bottom:14px;margin:0;z-index:2}
 #card .src{padding-right:60px}
-/* small player: timeline and the embedded player can't be touched (no pocket scrubs); BIG view unlocks them */
-#screen:not(.big) iframe{pointer-events:none}
+/* small player: our timeline can't be dragged (no pocket scrubs); the video window itself stays tappable, e.g. to skip adverts */
 #ytbar:not(.big) #scrub{pointer-events:none}
 /* phone app, portrait: player clear of the front camera and centred (website unchanged) */
 .native .port #screen{left:119px;top:52px}
