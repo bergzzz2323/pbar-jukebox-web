@@ -6,6 +6,7 @@ const $ = id => document.getElementById(id);
 const R = i => { const s = Math.sin(i * 12.9898) * 43758.5453; return s - Math.floor(s); };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const N = window.Native || null;
+if (N) document.documentElement.classList.add('native');   // phone app only (not the website)
 // settings live in the web view and, as a backup, in the app's own saved settings
 const store = {
   get(k, d = '') {
@@ -185,7 +186,7 @@ function fit() {
     const Hu = H / k2, lim = Hu - 316;
     if (rt > lim) { oy -= (rt - lim) * k2; rt = Math.round(lim); }
     // ...but never under the small player: on very short screens shrink the scene to fit between them
-    const roofUI = (oy + 54 * k) / k2, ROOF_MIN = 212;
+    const roofUI = (oy + 54 * k) / k2, ROOF_MIN = N ? 250 : 212;   // the phone app's portrait player sits lower, clear of the camera
     if (roofUI < ROOF_MIN) {
       k = Math.max(0.3, (lim - 12 - ROOF_MIN) * k2 / 338);
       ox = W / 2 - 468 * k; oy = ROOF_MIN * k2 - 54 * k;
@@ -382,7 +383,8 @@ window.__spState = json => {
   try {
     const prev = spState;
     spState = JSON.parse(json);
-    if (cur && cur.how === 'spotify' && spState.uri === cur.spPlaying) cur.spSeen = true;   // only judge once Spotify has really started our track
+    if (cur && cur.how === 'spotify' && spState.uri === cur.spPlaying) cur.spSeen = true;
+    if (cur && cur.how === 'spotify' && cur.spSeen && spState.name) { if (!cur.meta) cur.meta = {}; if (metaMissing(cur)) { cur.meta.title = spState.name; cur.meta.artist = spState.artist || cur.meta.artist; } }   // only judge once Spotify has really started our track
     if (cur && cur.how === 'spotify' && cur.spSeen && spState.uri && spState.uri !== cur.spPlaying && !stopped) trackEnded('end');
     else if (cur && cur.how === 'spotify' && cur.spSeen && spState.uri === cur.spPlaying && spState.paused && prev && !prev.paused && spState.duration && spState.position >= spState.duration - 2500) trackEnded('end');
     if (cur && cur.how === 'spotify' && !scrubbing) {
@@ -508,12 +510,13 @@ function scrubUI() {
 }
 const scrubEl = $('scrub');
 const fracAt = e => { const r = scrubEl.getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); };
-scrubEl.addEventListener('pointerdown', e => { if (!ytDur) return; e.preventDefault(); scrubEl.setPointerCapture(e.pointerId); scrubbing = true; scrubFrac = fracAt(e); scrubUI(); });
+scrubEl.addEventListener('pointerdown', e => { if (!ytDur || !screen.classList.contains('big')) return;   // timeline only moves in BIG view (no pocket scrubs)
+  e.preventDefault(); scrubEl.setPointerCapture(e.pointerId); scrubbing = true; scrubFrac = fracAt(e); scrubUI(); });
 scrubEl.addEventListener('pointermove', e => { if (!scrubbing) return; scrubFrac = fracAt(e); scrubUI(); });
 const endScrub = () => { if (!scrubbing) return; scrubbing = false; ytTime = scrubFrac * ytDur; ytSeek(0); scrubUI(); };
 scrubEl.addEventListener('pointerup', endScrub);
 scrubEl.addEventListener('pointercancel', endScrub);
-scrubEl.addEventListener('keydown', e => { if (e.key === 'ArrowLeft') ytSeek(-10); if (e.key === 'ArrowRight') ytSeek(10); });
+scrubEl.addEventListener('keydown', e => { if (!screen.classList.contains('big')) return; if (e.key === 'ArrowLeft') ytSeek(-10); if (e.key === 'ArrowRight') ytSeek(10); });
 $('yt-back').addEventListener('click', () => ytSeek(-30));
 $('yt-fwd').addEventListener('click', () => ytSeek(30));
 // player sizes: mini (default, barely there) -> open (controls) -> big
@@ -585,6 +588,35 @@ function findDJ(it) {
   }
   return '';
 }
+// one key per song link, however it was written (youtu.be vs youtube.com, ?si= tracking, intl- paths, m./www.)
+function linkKey(url) {
+  const c = classify(url);
+  if (c.spotifyUri) return c.spotifyUri;
+  if (c.ytId) return 'yt:' + c.ytId;
+  return url.toLowerCase().replace(/^https?:\/\//, '').replace(/^(www|m|on)\./, '').split(/[?#]/)[0].replace(/\/+$/, '');
+}
+// a rough "same song" fingerprint from the title/artist, to catch reposts on another site or with another link
+function songSig(it) {
+  const m = (it && it.meta) || {};
+  const clean = t => String(t || '').toLowerCase()
+    .replace(/\((?:[^)]*)\)|\[(?:[^\]]*)\]/g, ' ')
+    .replace(/\b(official|video|audio|music|lyrics?|hq|hd|4k|visuali[sz]er|full|out now|premiere|free download)\b/g, ' ')
+    .replace(/\b(feat|ft)\.?\s.*$/, ' ')
+    .replace(/[^a-z0-9]+/g, ' ').trim();
+  const title = clean(m.title), artist = clean(m.artist);
+  if (title.length < 3) return null;
+  return { title, artist };
+}
+function sameSong(a, b) {
+  if (!a || !b) return false;
+  if (a.url && b.url && linkKey(a.url) === linkKey(b.url)) return true;
+  const x = songSig(a), y = songSig(b);
+  if (!x || !y || x.title !== y.title) return false;
+  if (x.artist && y.artist) return x.artist === y.artist;
+  return x.title.length >= 6;   // no artist on one side: only trust a distinctive title
+}
+// played very recently (this track or the last few)? then it's a repost: skip it
+const isRecentRepeat = it => [cur, ...history.slice(-8)].some(h => h && h !== it && sameSong(h, it));
 function itemsFromMessages(msgs) {
   for (const m of msgs) {
     const to = m && m.replyTo && m.replyTo.replyToMsgId;
@@ -594,7 +626,7 @@ function itemsFromMessages(msgs) {
   for (const m of msgs) {
     if (!m || !m.id) continue;
     for (const url of linksFromMessage(m)) {
-      const key = url.replace(/[?&](si|utm_[a-z]+|feature|pp)=[^&]*/gi, '');
+      const key = linkKey(url);
       if (feed.seen.has(key)) continue;
       feed.seen.add(key);
       const it = { id: m.id, date: m.date, url, text: m.message || '', meta: previewMeta(m) || {}, ...classify(url) };
@@ -770,7 +802,7 @@ function fillCard() {
   } else if (cur) {
     const m = cur.meta || {};
     if (cur.how === 'spotify' && spState && spState.name) { artist = spState.artist; title = spState.name; }
-    artist = artist || m.artist || '—'; title = title || m.title || cur.url;
+    artist = artist || m.artist || (cur.enriched ? 'Unknown' : 'Looking it up…'); title = title || (m.title && !JUNK_TITLE.test(m.title) ? m.title : '') || (cur.enriched ? 'Unknown' : 'Looking it up…');
     label = cur.label === undefined ? 'Looking it up…' : (cur.label || 'Unknown');
     dj = findDJ(cur) || 'Unknown';
     src = 'Playing via ' + ({ spotify: 'Spotify', youtube: 'YouTube', soundcloud: 'SoundCloud', mixcloud: 'Mixcloud' }[cur.how] || 'nothing') + ' · tap to close';
@@ -779,7 +811,50 @@ function fillCard() {
   const starBtn = canStar ? `<button class="star${isFav(cur) ? ' on' : ''}" id="card-star" aria-pressed="${isFav(cur)}" aria-label="${isFav(cur) ? 'Remove from favourites' : 'Add to favourites'}">★</button>` : '';
   card.innerHTML = starBtn + `<div class="k">ARTIST</div><div class="v big">${esc(artist)}</div><div class="k">TRACK</div><div class="v">${esc(title)}</div><div class="k">LABEL</div><div class="v">${esc(label)}</div><div class="k">DJ</div><div class="v dj">${esc(dj)}</div><div class="src">${esc(src)}</div>`;
 }
+// Fill in missing artist / track names from the link itself (YouTube, Spotify, SoundCloud, Mixcloud, song.link)
+const JUNK_TITLE = /^(youtube|spotify|soundcloud|mixcloud|untitled|n\/?a|unknown|-|—|)$/i;
+const tidyTitle = t => String(t || '')
+  .replace(/\s*[([](?:official\s*)?(?:music\s*)?(?:video|audio|visuali[sz]er|lyric(?:s| video)?|hq|hd|4k|full|premiere|out now|free download)[^)\]]*[)\]]/gi, '')
+  .replace(/\s*\|.*$/, '').replace(/\s+/g, ' ').trim();
+const tidyArtist = a => String(a || '').replace(/\s*-\s*Topic$/i, '').replace(/VEVO$/i, '').replace(/\s+/g, ' ').trim();
+function splitArtistTitle(title, author) {
+  const t = tidyTitle(title);
+  const p = t.split(/\s[-–—]\s/);
+  if (p.length >= 2) return { artist: tidyArtist(p[0]), title: p.slice(1).join(' - ').trim() };
+  const by = /^(.+?)\s+by\s+(.+)$/i.exec(t);               // SoundCloud: "Track by Artist"
+  if (by && author && by[2].toLowerCase() === String(author).toLowerCase()) return { artist: tidyArtist(by[2]), title: by[1] };
+  return { artist: tidyArtist(author), title: t };
+}
+const metaMissing = it => { const m = it.meta || {}; return !m.artist || !m.title || JUNK_TITLE.test(String(m.title).trim()) || /^https?:/i.test(m.title); };
+async function enrichMeta(it) {
+  if (!it || !it.url || it.enriched || !metaMissing(it)) return;
+  it.enriched = true;
+  if (!it.meta) it.meta = {};
+  if (JUNK_TITLE.test(String(it.meta.title || '').trim()) || /^https?:/i.test(it.meta.title || '')) it.meta.title = '';
+  const put = (o, force) => { if (!o) return; if (o.artist && (!it.meta.artist || force)) it.meta.artist = o.artist; if (o.title && (!it.meta.title || force)) it.meta.title = o.title; };
+  const u = encodeURIComponent(it.url);
+  try {
+    if (it.kind === 'youtube' || it.ytId) {
+      const j = await getJSON('https://www.youtube.com/oembed?format=json&url=' + encodeURIComponent('https://www.youtube.com/watch?v=' + (it.ytId || '')))
+        || await getJSON('https://noembed.com/embed?url=' + u);
+      if (j && j.title) put(splitArtistTitle(j.title, j.author_name));
+    } else if (it.kind === 'soundcloud') {
+      const j = await getJSON('https://soundcloud.com/oembed?format=json&url=' + u);
+      if (j && j.title) put(splitArtistTitle(j.title, j.author_name));
+    } else if (it.kind === 'mixcloud') {
+      const j = await getJSON('https://www.mixcloud.com/oembed/?format=json&url=' + u);
+      if (j && j.title) put(splitArtistTitle(j.title, j.author_name));
+    }
+    if (metaMissing(it)) { const o = await odesli(it.url); if (o) put({ artist: tidyArtist(o.artist), title: tidyTitle(o.title) }); }
+    if (metaMissing(it) && it.kind === 'spotify') {
+      const j = await getJSON('https://open.spotify.com/oembed?url=' + u);
+      if (j && j.title) put({ title: j.title });
+    }
+  } catch (e) {}
+  if (cur === it && card.classList.contains('show')) fillCard();
+}
 async function lookupLabel(it) {
+  await enrichMeta(it);
   if (it.label !== undefined) return;
   let { artist, title } = it.meta || {};
   if (!artist || !title) { const o = await odesli(it.url); if (o) { mergeMeta(it, o); artist = it.meta.artist; title = it.meta.title; } }
@@ -876,7 +951,7 @@ async function next() {
       if (card.classList.contains('show')) fillCard();
       return;
     }
-    let skipped = 0, wrapped = false;
+    let skipped = 0, wrapped = false, dupSkips = 0;
     for (let tries = 0; tries < 60; tries++) {
       let it;
       let fromFresh = false;
@@ -888,6 +963,7 @@ async function next() {
         if (it) { store.set(K('lastId'), String(it.id)); store.set(K('lastUrl'), it.url); }
       }
       if (!it) break;
+      if (isRecentRepeat(it)) { dupSkips++; tries--; if (dupSkips > 200) break; continue; }   // repost of something just played
       cur = it;
       const ok = await playItem(it);
       if (ok) {
